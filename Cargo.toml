@@ -1,0 +1,19 @@
+[package]
+name = "sctk_layer_test"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+wayland-client = "0.30.0-beta.10"
+wayland-backend = { version = "0.1.0-beta.10", features = ["client_system"] }
+egui = "0.19"
+egui_glow = "0.19"
+glutin = "0.29"
+env_logger = "0.9"
+
+[dependencies.smithay-client-toolkit]
+version = "0.16.0"
+git = "https://github.com/Smithay/client-toolkit.git"
+rev = "fbf2d9da504414295b69b8a5eab2bae060e08a0e"
