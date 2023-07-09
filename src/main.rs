@@ -6,7 +6,7 @@ use glutin::platform::unix::RawContextExt;
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState},
     delegate_compositor, delegate_keyboard, delegate_layer, delegate_output, delegate_pointer,
-    delegate_registry, delegate_seat, delegate_shm,
+    delegate_registry, delegate_seat,
     output::{OutputHandler, OutputState},
     registry::{ProvidesRegistryState, RegistryState},
     registry_handlers,
@@ -15,20 +15,22 @@ use smithay_client_toolkit::{
         pointer::{PointerEvent, PointerEventKind, PointerHandler},
         Capability, SeatHandler, SeatState,
     },
-    shell::layer::{
-        Anchor, KeyboardInteractivity, Layer, LayerShell, LayerShellHandler, LayerSurface,
-        LayerSurfaceConfigure,
+    shell::{
+        wlr_layer::{
+            Anchor, KeyboardInteractivity, Layer, LayerShell, LayerShellHandler, LayerSurface,
+            LayerSurfaceConfigure,
+        },
+        WaylandSurface,
     },
-    shm::{slot::SlotPool, ShmHandler, ShmState},
 };
 use wayland_client::{
-    globals::{registry_queue_init, GlobalListContents},
+    globals::registry_queue_init,
     protocol::{
         wl_display::WlDisplay,
-        wl_keyboard, wl_output, wl_pointer, wl_registry, wl_seat,
+        wl_keyboard, wl_output, wl_pointer, wl_seat,
         wl_surface::{self, WlSurface},
     },
-    Connection, Dispatch, Proxy, QueueHandle,
+    Connection, Proxy, QueueHandle,
 };
 
 fn main() {
@@ -40,17 +42,15 @@ fn main() {
     let qh = event_queue.handle();
 
     let mut simple_layer = SimpleLayer {
-        registry_state: RegistryState::new(&conn, &qh),
-        seat_state: SeatState::new(),
-        output_state: OutputState::new(),
+        registry_state: RegistryState::new(&globals),
+        seat_state: SeatState::new(&globals, &qh),
+        output_state: OutputState::new(&globals, &qh),
         compositor_state: CompositorState::bind(&globals, &qh)
             .expect("wl_compositor is not available"),
-        shm_state: ShmState::bind(&globals, &qh).expect("wl_shm is not available"),
         layer_state: LayerShell::bind(&globals, &qh).expect("layer shell is not available"),
 
         exit: false,
         first_configure: true,
-        pool: None,
         width: 600,
         height: 108,
         shift: None,
@@ -64,27 +64,23 @@ fn main() {
         egui_glow: None,
     };
 
-    while !simple_layer.registry_state.ready() {
-        event_queue.blocking_dispatch(&mut simple_layer).unwrap();
-    }
+    let surface = simple_layer.compositor_state.create_surface(&qh);
 
-    let pool = SlotPool::new(
-        simple_layer.width as usize * simple_layer.height as usize * 4,
-        &simple_layer.shm_state,
-    )
-    .expect("Failed to create pool");
-    simple_layer.pool = Some(pool);
+    let layer = simple_layer.layer_state.create_layer_surface(
+        &qh,
+        surface,
+        Layer::Top,
+        Some("simple_layer"),
+        None,
+    );
+    // Configure the layer surface, providing things like the anchor on screen, desired size and the keyboard
+    // interactivity
+    layer.set_anchor(Anchor::TOP | Anchor::LEFT);
+    layer.set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
+    layer.set_size(simple_layer.width, simple_layer.height);
+    layer.set_margin(10, 10, 10, 10);
 
-    let surface = simple_layer.compositor_state.create_surface(&qh).unwrap();
-
-    let layer = LayerSurface::builder()
-        .size((simple_layer.width, simple_layer.height))
-        .margin(10, 10, 10, 10)
-        .anchor(Anchor::TOP | Anchor::LEFT)
-        .keyboard_interactivity(KeyboardInteractivity::OnDemand)
-        .namespace("sample_layer")
-        .map(&qh, &simple_layer.layer_state, surface, Layer::Top)
-        .expect("layer surface creation");
+    layer.commit();
 
     let (gl_window, gl) = create_display(
         conn.display(),
@@ -186,12 +182,10 @@ struct SimpleLayer {
     seat_state: SeatState,
     output_state: OutputState,
     compositor_state: CompositorState,
-    shm_state: ShmState,
     layer_state: LayerShell,
 
     exit: bool,
     first_configure: bool,
-    pool: Option<SlotPool>,
     width: u32,
     height: u32,
     shift: Option<u32>,
@@ -448,12 +442,6 @@ impl PointerHandler for SimpleLayer {
     }
 }
 
-impl ShmHandler for SimpleLayer {
-    fn shm_state(&mut self) -> &mut ShmState {
-        &mut self.shm_state
-    }
-}
-
 impl SimpleLayer {
     pub fn draw(&mut self, qh: &QueueHandle<Self>) {
         let window = self.layer.as_ref().unwrap();
@@ -523,7 +511,6 @@ impl SimpleLayer {
 
 delegate_compositor!(SimpleLayer);
 delegate_output!(SimpleLayer);
-delegate_shm!(SimpleLayer);
 
 delegate_seat!(SimpleLayer);
 delegate_keyboard!(SimpleLayer);
@@ -538,19 +525,6 @@ impl ProvidesRegistryState for SimpleLayer {
         &mut self.registry_state
     }
     registry_handlers![OutputState, SeatState];
-}
-
-impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for SimpleLayer {
-    fn event(
-        _state: &mut Self,
-        _registry: &wl_registry::WlRegistry,
-        _event: wl_registry::Event,
-        _data: &GlobalListContents,
-        _conn: &Connection,
-        _qh: &QueueHandle<Self>,
-    ) {
-        // We don't need any other globals.
-    }
 }
 
 fn create_display(
