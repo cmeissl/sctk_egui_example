@@ -1151,7 +1151,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "sctk_layer_test"
+name = "sctk_egui_example"
 version = "0.1.0"
 dependencies = [
  "egui",
