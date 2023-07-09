@@ -118,7 +118,7 @@ struct EguiGlow {
 
 impl EguiGlow {
     fn new(gl: std::sync::Arc<egui_glow::glow::Context>) -> Self {
-        let painter = egui_glow::Painter::new(gl, None, "").expect("failed to create painter");
+        let painter = egui_glow::Painter::new(gl, "", None).expect("failed to create painter");
 
         Self {
             egui_ctx: Default::default(),
@@ -499,7 +499,7 @@ impl SimpleLayer {
         egui_glow::painter::clear(
             gl,
             [self.width, self.height],
-            egui::Rgba::from_rgba_unmultiplied(0f32, 0f32, 0f32, 0f32),
+            egui::Rgba::from_rgba_unmultiplied(0f32, 0f32, 0f32, 0f32).to_array(),
         );
 
         egui_glow.paint((self.width, self.height));
